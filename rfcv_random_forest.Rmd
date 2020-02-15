@@ -1,0 +1,806 @@
+---
+title: "model_characterize_orig_add"
+author: "wentao"
+date: "2019年7月12日"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### 对原始model进行交叉检验，提取特征，进行特征的分析
+
+```{r }
+
+## 导入数据，去除数量较低的序列
+ps7 = readRDS("./ps7.rds")
+ps7 <- subset_samples(ps7,SampleType %in% c("D_bulk","H_bulk"))
+ps7
+####进行phyloseq下游分析
+# ps7 <- prune_samples(sample_sums(ps7) >=500,ps7);ps7
+ps7
+ps7 = filter_taxa(ps7, function(x) sum(x ) > 0 , TRUE);ps7
+ps7 <- subset_samples(ps7,!Description %in% c("No_166"))
+
+####进行phyloseq下游分析
+# ps7 <- prune_samples(sample_sums(ps7) >=500,ps7);ps7
+# ps7
+ps7 = filter_taxa(ps7, function(x) sum(x ) > 0 , TRUE);ps7
+
+
+
+mapping = as.data.frame(sample_data(ps7))
+table(mapping$SampleType)
+table(mapping$Description)
+vegan_otu <-  function(physeq){
+  OTU <-  otu_table(physeq)
+  if(taxa_are_rows(OTU)){
+    OTU <-  t(OTU)
+  }
+  return(as(OTU,"matrix"))
+}
+otutab = as.data.frame(t(vegan_otu(ps7)))
+dim(otutab)
+
+mapping7 = as.data.frame(sample_data(ps7))
+
+library(randomForest)
+
+# otutab need transposition for randomForest function
+otutab_t = as.data.frame(t(otutab))
+# great time consumption, need 5-30 minutes
+n = ncol(otutab_t)-1
+myotutab_t= otutab_t[1:n]
+# Set classification info.
+otutab_t$group = factor(mapping7$SampleType,levels= c("D_bulk","H_bulk"))
+colnames(otutab_t) = paste("OTU",colnames(otutab_t),sep = "")
+set.seed(315)
+result= rfcv(myotutab_t, otutab_t$OTUgroup, cv.fold=5, scale = "log", step = 0.9)
+# result$n.var
+# length(result$n.var)
+with(result, plot(n.var, error.cv, log="x", type="o", lwd=2))
+result1 = result
+
+error.cv = data.frame(num = result$n.var, error.1 =  result$error.cv)
+for (i in 316:(315+4)){
+  print(i)
+  set.seed(i)
+  result= rfcv(myotutab_t, otutab_t$OTUgroup, cv.fold=5, scale = "log", step = 0.9)
+  error.cv = cbind(error.cv, result$error.cv)
+}
+
+
+n.var = error.cv$num
+error.cv = error.cv[,2:6]
+head(error.cv)
+colnames(error.cv) = paste('err',1:5,sep='.')
+err.mean = apply(error.cv,1,mean)
+allerr = data.frame(num=n.var,err.mean=err.mean,error.cv)
+# number of features selected
+optimal = 223
+
+write.table(allerr, file = "./ramdom_forest_for_model_predict/romdom_forest_rfcv.txt", sep = "\t", quote = F, row.names = T, col.names = T)
+library(ggplot2)
+p = ggplot() + 
+  geom_line(aes(x = allerr$num, y = allerr$err.1), colour = 'grey') + 
+  geom_line(aes(x = allerr$num, y = allerr$err.2), colour = 'grey') + 
+  geom_line(aes(x = allerr$num, y = allerr$err.3), colour = 'grey') + 
+  geom_line(aes(x = allerr$num, y = allerr$err.4), colour = 'grey') + 
+  geom_line(aes(x = allerr$num, y = allerr$err.5), colour = 'grey') + 
+  geom_line(aes(x = allerr$num, y = allerr$err.mean), colour = 'black') + 
+  geom_vline(xintercept = optimal, colour='black', lwd=0.36, linetype="dashed") + 
+  #  geom_hline(yintercept = min(allerr$err.mean), colour='black', lwd=0.36, linetype="dashed") + 
+  coord_trans(x = "log2") +
+  scale_x_continuous(breaks = c(1, 2, 5, 10, 20, 30, 50, 100, 200)) + # , max(allerr$num)
+  labs(title=paste('Training set (n = ', dim(otutab_t)[1],')', sep = ''), 
+       x='Number of families ', y='Cross-validation error rate') + 
+  annotate("text", x = optimal, y = max(allerr$err.mean), label=paste("optimal = ", optimal, sep="")) +
+  theme_classic()
+p
+ggsave(p, file = "./ramdom_forest_for_model_predict/romdom_forest_rfcv.pdf", width = 89, height = 50, unit = 'mm')
+
+
+
+
+```
+
+
+
+
+### 对add样品后的模型进行交叉检验
+
+```{r }
+
+ps6 = readRDS("./add_sample_for_model/209/ps_NCBI8.rds")
+
+ps6
+
+ps6_2 = readRDS("./add_sample_for_predict/B1-NCBI8发病预测准确可用/ps_NCBI8.rds")
+
+mapping = as.data.frame(sample_data(ps6_2))
+mapping
+# mapping$zone = rep("bulk",length(mapping$zone))
+mapping$SampleTypeDH = mapping$SampleType
+mapping$SampleType = paste(mapping$fianl_SampleType,mapping$zone,sep = "_")
+sample_data(ps6_2) = mapping
+ps6_2 <- subset_samples(ps6_2,SampleType %in% c("H_bulk","D_bulk"))
+ps6_2 
+
+
+
+library(phyloseq)
+library("tidyverse")
+## 导入数据，去除数量较低的序列
+ps7 = readRDS("./ps7.rds")
+ps7 <- subset_samples(ps7,SampleType %in% c("D_bulk","H_bulk"))
+ps7
+####进行phyloseq下游分析
+# ps7 <- prune_samples(sample_sums(ps7) >=500,ps7);ps7
+ps7
+ps7 = filter_taxa(ps7, function(x) sum(x ) > 0 , TRUE);ps7
+ps7 <- subset_samples(ps7,!Description %in% c("No_166"))
+ps0 = ps7
+
+
+# map = as.data.frame(sample_data(ps6))
+# map
+# map$SampleType = paste(map$fianl_SampleType,map$zone,sep = "_")
+# sample_data(ps6) = map
+
+ps_add_out =  merge_ps(ps1 = ps0,ps2 = ps6,model = 2)
+ps_add_out  = merge_ps(ps1 = ps_add_out,ps2 = ps6_2,model = 2)
+
+ps0 =ps_add_out
+
+ps0
+
+
+ps7= ps0
+####进行phyloseq下游分析
+# ps7 <- prune_samples(sample_sums(ps7) >=500,ps7);ps7
+# ps7
+ps7 = filter_taxa(ps7, function(x) sum(x ) > 0 , TRUE);ps7
+
+
+
+mapping = as.data.frame(sample_data(ps7))
+table(mapping$SampleType)
+table(mapping$Description)
+vegan_otu <-  function(physeq){
+  OTU <-  otu_table(physeq)
+  if(taxa_are_rows(OTU)){
+    OTU <-  t(OTU)
+  }
+  return(as(OTU,"matrix"))
+}
+otutab = as.data.frame(t(vegan_otu(ps7)))
+dim(otutab)
+
+
+otutab[is.na(otutab)] <- 0
+
+# otutab need transposition for randomForest function
+otutab_t = as.data.frame(t(otutab))
+# great time consumption, need 5-30 minutes
+n = ncol(otutab_t)-1
+myotutab_t= otutab_t[1:n]
+# Set classification info.
+otutab_t$group = factor(mapping7$SampleType,levels= c("D_bulk","H_bulk"))
+colnames(otutab_t) = paste("OTU",colnames(otutab_t),sep = "")
+set.seed(315)
+
+
+result= rfcv(myotutab_t, otutab_t$OTUgroup, cv.fold=5, scale = "log", step = 0.9)
+
+# result$n.var
+# length(result$n.var)
+with(result, plot(n.var, error.cv, log="x", type="o", lwd=2))
+result1 = result
+
+error.cv = data.frame(num = result$n.var, error.1 =  result$error.cv)
+for (i in 316:(315+4)){
+  print(i)
+  set.seed(i)
+  result= rfcv(myotutab_t, otutab_t$OTUgroup, cv.fold=5, scale = "log", step = 0.9)
+  error.cv = cbind(error.cv, result$error.cv)
+}
+
+
+n.var = error.cv$num
+error.cv = error.cv[,2:6]
+head(error.cv)
+colnames(error.cv) = paste('err',1:5,sep='.')
+err.mean = apply(error.cv,1,mean)
+allerr = data.frame(num=n.var,err.mean=err.mean,error.cv)
+# number of features selected
+optimal = 223
+
+write.table(allerr, file = "./ramdom_forest_for_model_predict/romdom_forest_rfcv.txt", sep = "\t", quote = F, row.names = T, col.names = T)
+library(ggplot2)
+p = ggplot() + 
+  geom_line(aes(x = allerr$num, y = allerr$err.1), colour = 'grey') + 
+  geom_line(aes(x = allerr$num, y = allerr$err.2), colour = 'grey') + 
+  geom_line(aes(x = allerr$num, y = allerr$err.3), colour = 'grey') + 
+  geom_line(aes(x = allerr$num, y = allerr$err.4), colour = 'grey') + 
+  geom_line(aes(x = allerr$num, y = allerr$err.5), colour = 'grey') + 
+  geom_line(aes(x = allerr$num, y = allerr$err.mean), colour = 'black') + 
+  geom_vline(xintercept = optimal, colour='black', lwd=0.36, linetype="dashed") + 
+  #  geom_hline(yintercept = min(allerr$err.mean), colour='black', lwd=0.36, linetype="dashed") + 
+  coord_trans(x = "log2") +
+  scale_x_continuous(breaks = c(1, 2, 5, 10, 20, 30, 50, 100, 200)) + # , max(allerr$num)
+  labs(title=paste('Training set (n = ', dim(otutab_t)[1],')', sep = ''), 
+       x='Number of families ', y='Cross-validation error rate') + 
+  annotate("text", x = optimal, y = max(allerr$err.mean), label=paste("optimal = ", optimal, sep="")) +
+  theme_classic()
+p
+
+filename = paste(path,"romdom_forest_rfcv_add.pdf",sep = "")
+ggsave(p, file = filename, width = 89, height = 50, unit = 'mm')
+
+
+```
+
+
+
+##### 基于随机森林的特征筛选和描述···············源模型·······················
+
+
+```{R}
+model = model_orig
+
+
+  path = "./model_orig/"
+dir.create(path)
+ps7 = readRDS("./ps7.rds")
+optimal = 79
+model = model_orig
+
+
+
+model = model_add
+path = "./model_add/"
+dir.create(path)
+ps7  = ps_add_out
+optimal = 79
+
+
+
+
+```
+
+### 表示随机森林重要OTU
+
+```{R}
+
+
+
+####### 可视化重要变量
+###提取分类变量使用MeanDecreaseAccuracy作为重要性指标选择变量#######
+a=round(importance(model), 2)
+library(dplyr)
+# str(a)
+a=as.data.frame(a)
+a$id=gsub("OTU","",row.names(a))
+
+a2<- dplyr::arrange(a, desc(MeanDecreaseAccuracy))
+# head(a2)
+row.names(a2)=a2$id
+##提取多少个需要的变量
+a3=head(a2,n=optimal)
+
+vegan_tax <-  function(physeq){
+  tax <-  tax_table(physeq)
+  
+  return(as(tax,"matrix"))
+}
+taxonomy = as.data.frame(vegan_tax(ps7))
+# taxonomy <- as.matrix(tax_table(ps7))
+# # str(taxonomy)
+# taxonomy <- as.data.frame(taxonomy)
+
+#发现这个注释文件并不适用于直接作图。
+#采用excel将其分列处理，并且删去最后一列，才可以运行
+colnames(taxonomy) = c("kingdom","phylum","class","order","family","genus","species")
+tax = taxonomy[rownames(a3),]
+# head(tax)
+# dim(tax)
+a3$phylum = gsub("","",tax$phylum,perl=TRUE) 
+a3$class = gsub("","",tax$class,perl=TRUE) 
+a3$order = gsub("","",tax$order,perl=TRUE) 
+a3$family = gsub("","",tax$family,perl=TRUE) 
+a3$genus = gsub("","",tax$genus,perl=TRUE) 
+a3$species = gsub("","",tax$species,perl=TRUE) 
+
+OTU = as.data.frame(t(vegan_otu(ps7)))
+##导入tax文件
+tax = as.data.frame(vegan_tax(ps7))
+head(tax)
+### 提取mapping文件
+design = as.data.frame(sample_data(ps7))
+library(tidyverse)
+OTU = otutab
+head(OTU)
+design = as.data.frame(sample_data(ps7))
+OTU = as.matrix(OTU)
+norm = t(t(OTU)/colSums(OTU,na=F)) #* 100 # normalization to total 100
+norm1 = norm %>% 
+  t() %>% as.data.frame()
+#数据分组计算平均值
+iris.split <- split(norm1,as.factor(design$SampleType))
+
+iris.apply <- lapply(iris.split,function(x)colMeans(x,na.rm = T))
+# 组合结果
+norm2 <- do.call(rbind,iris.apply)%>% 
+  t() 
+head(norm2)
+colnames(norm2) = paste(colnames(norm2),"mean",sep = "")
+head(a3)
+
+ind_fal = merge(a3,norm2,by = "row.names",all = F)
+
+head(ind_fal)
+head(ind_fal)
+
+
+wt =rep("a",length(ind_fal$id))
+for (i in 1:length(ind_fal$id)) {
+  if (ind_fal$D_bulkmean[i] > ind_fal$H_bulkmean[i]) {
+    wt[i] = "D_enrich"
+  }
+  if (ind_fal$D_bulkmean[i] < ind_fal$H_bulkmean[i]) {
+    wt[i] = "H_enrich"
+  }
+  
+  
+}
+
+
+ind_fal$level = wt
+filename = paste(path,"romdom_forest_rfcv_add_","loading",".csv",sep = "")
+write.csv(ind_fal,filename,quote = F)
+
+# dir.create(path)
+filename = paste(path,"romdom_forest_rfcv_add_","loading",".csv",sep = "")
+
+write.csv(ind_fal,filename,quote = F)
+
+#######开始出图，做火柴图########
+mi=c("#1B9E77" ,"#D95F02", "#7570B3","#E7298A")
+library("ggplot2") 
+a3$id2 = paste("OTU",1:nrow(a3),sep = "")
+
+head(a3)
+p=ggplot(a3, aes(x = MeanDecreaseAccuracy, y = reorder(id,MeanDecreaseAccuracy))) + 
+  geom_point(size=6,pch=20,aes(colour=phylum,fill=phylum))+
+  geom_segment(aes(yend=id,colour=phylum),xend=0,size=3)+
+  geom_label(aes(x =MeanDecreaseAccuracy*1.1,  label = phylum),size = 3)
+
+p 
+
+p <- p+theme_light()+theme(axis.text.x = element_text(colour = "black",size = 20,face = "bold"),
+                           axis.text.y = element_text(colour = "black",size = 10,face = "bold"))
+p
+
+plotname <- paste(path,"/a4_random_forst_loaing_",optimal,".pdf",sep = "")
+ggsave(plotname, p, width = 10, height = 20)
+
+
+library(ggtree)
+library(RColorBrewer)#调色板调用包
+display.brewer.all()#调用所有这个包中的调色板
+# mi = display.brewer.pal("Set1")#提取特定个数的调色板颜色，会出图显示
+mi = brewer.pal(10,"Set1")#仅仅只显示色号
+mi2 = brewer.pal(10,"Set2")
+mi = c(mi,mi2)
+
+head(a3)
+a3$iid = paste(1:length(a3$id))
+library(ggplot2)
+angle1 = 90 - 360 * ( as.numeric(a3$iid) - 0.5) /length(a3$id)
+# , label =phylum
+a3$id = factor(a3$id,levels = a3$id)
+p = a3  %>%
+  ggplot(aes(factor(id), MeanDecreaseAccuracy, fill = phylum, group = phylum, label =family)) +
+  geom_bar(stat = 'identity', position = 'dodge') +
+  scale_fill_manual(values = mi)+
+  geom_text(hjust = 0, angle = angle1, alpha = .5) +
+  coord_polar() +
+  ggtitle('') +
+  ylim(c(-5,7))+
+  theme_void() 
+p
+
+plotname <- paste(path,"//a4_random_forst_loaing_cri",optimal,".pdf",sep = "")
+ggsave(plotname, p, width = 10, height = 20)
+
+
+# library(ggtree)
+# library(RColorBrewer)#调色板调用包
+# display.brewer.all()#调用所有这个包中的调色板
+# mi = display.brewer.pal("Set1")#提取特定个数的调色板颜色，会出图显示
+# mi = brewer.pal(10,"Set1")#仅仅只显示色号
+
+head(a3)
+
+
+a4 = matrix(NA,nrow = (dim(a3)[1]/4 +dim(a3)[1])/3,ncol = dim(a3)[2])
+a4 = as.data.frame(a4)
+colnames(a4) = colnames(a3)
+a5 = rbind(a3,a4)
+
+
+a5$iid = paste(1:length(a5$id))
+a5$id = as.character(a5$id)
+
+
+a5$id[(optimal+1):length(a5$id)] = paste("A",(1:length(a5$id[(optimal+1):length(a5$id)])),sep = "")
+a5$id = factor(a5$id,levels = c(as.character(a3$id),paste("A",(1:length(a5$id[(optimal+1):length(a5$id)])),sep = "")))
+
+
+
+angle = 90 - 360 * ( as.numeric(a5$iid) - 0.5) /length(a5$id)
+# , label =phylum
+p = a5  %>%
+  ggplot(aes(factor(id), MeanDecreaseAccuracy, fill = phylum, group = phylum, label =family)) +
+  geom_bar(stat = 'identity', position = 'dodge') +
+  scale_fill_manual(values = mi)+
+  geom_text(hjust = 0, angle = angle, alpha = .5) +
+  coord_polar() +
+  ggtitle('') +
+  ylim(c(-5,7))+
+  theme_void() 
+p
+
+plotname <- paste(path,"/a4_random_forst_loaing_cri_",optimal,".pdf",sep = "")
+ggsave(plotname, p, width = 10, height = 20)
+
+
+```
+
+## 这里可视化丰度信息使用两组之间的相对丰度来表示
+
+```{R}
+
+###下面可视化丰度信息
+head(ind_fal)
+row.names(ind_fal) = ind_fal$Row.names 
+ind_fal$Row.names = NULL
+ind_fal1 = data.frame(row.names = row.names(ind_fal),ind_fal$family,ind_fal$D_bulkmean,ind_fal$H_bulkmean)
+ind_fal1$id = row.names(ind_fal1)
+head(ind_fal1)
+
+library(reshape2)
+abun_a = melt(ind_fal1,id.var = c("id","ind_fal.family"),variable.name = "id", value.name = "count")
+head(abun_a)
+abun_a$iid = rep(paste(1:(length(abun_a$id)/2)),2)
+library(ggplot2)
+angle1 = 90 - 360 * ( as.numeric(abun_a$iid) - 0.5) /(length(abun_a$id)/2)
+# , label =phylum
+abun_a$id = factor(abun_a$id,levels = unique(abun_a$id))
+abun_a$ID = abun_a$id
+abun_a$id = NULL
+abun_a$count = abun_a$count*500
+
+abun_a$percount = abun_a$count/sum(abun_a$count)*100
+head(abun_a)
+library(plyr)
+abun_a1 = ddply(abun_a,"iid",transform,percount = count/sum(count)*100)
+head(abun_a1)
+
+# 
+# #, label =ind_fal.family
+# p = abun_a1  %>%
+#   ggplot(aes(x = iid, y = percount, fill =id, group = ind_fal.family)) +
+#   geom_bar(stat = 'identity') +
+#   scale_fill_manual(values = mi)+
+#   # geom_text(hjust = 0, angle = angle1, alpha = .5) +
+#   coord_polar() +
+#   ggtitle('') +
+#   ylim(c(-50,100))+
+#   theme_void() 
+# p
+head(a3)
+asa = a3$id
+
+
+
+
+abun_a1$ID = factor(abun_a1$ID,levels = a3$id)
+p = abun_a1  %>%
+  ggplot(aes(x = ID, y = percount, fill =id, group = ind_fal.family)) +
+  geom_bar(stat = 'identity') + scale_fill_manual(values = mi)+
+  theme_classic()+
+  theme(axis.text.x=element_text(angle=90,vjust=1, hjust=1,size = 15)) 
+p = p + scale_x_discrete(labels = a3$family)
+
+plotname <- paste(path,"/a4_random_forst_loaing_abun_",optimal,".pdf",sep = "")
+ggsave(plotname, p, width = 30, height = 6)
+
+
+```
+
+###重要OTU合并tax水不同水平，相对丰度展示
+```{r imput phyloseq data, echo=TRUE, message=FALSE, warning=FALSE}
+
+
+
+colnames(tax_table(ps7))
+ps1 = ps7
+
+
+
+#过滤代号
+sub= "random_forest_abun_bar"
+##过滤文件夹名称
+path1 = paste(path,"/",sub,sep = "")
+dir.create(path1)
+##输入群落数据
+i = ps1
+##设置分组整合等级
+j = "Family"
+# j = "Phylum"
+# j = "Class"
+j = "Order"
+j = "Genus"
+
+
+### 设置显示标签丰度阈值
+label_show = 0.33
+
+### 坐标轴排序
+axis_order = as.character(unique(mapping$SampleType))
+
+#设置筛选需要展示的物种
+
+##首先求取相对丰度
+ps1_rela  = transform_sample_counts(ps1, function(x) x / sum(x) );ps1_rela 
+ps2 <- ps1_rela %>%
+  subset_taxa(
+    # Kingdom == "Bacteria" &
+    #   Phylum  == "Proteobacteria"&
+    # Class == "Gammaproteobacteria"&
+    # Order == "Xanthomonadales"
+    #Family == "Fusarium_oxysporum"
+    #Genus == "Fusarium_oxysporum"
+    #Species == "Fusarium_oxysporum"
+    row.names(tax_table(ps1)) %in% row.names(a3)
+  )
+ps2
+
+Taxonomies <- ps2 %>%
+  tax_glom(taxrank = j) %>%                     # agglomerate at Class level Class
+  psmelt() %>%                                         # Melt to long format
+  arrange(Phylum)
+
+# sum(Taxonomies$Abundance)
+# 
+# mdf = psmelt(ps2)
+# head(mdf)
+# Taxonomies = mdf
+colbar <- dim(unique(select(Taxonomies, one_of(j))))[1]
+
+Phylum_colors = colorRampPalette(c( "#CBD588", "#599861", "orange","#DA5724", "#508578", "#CD9BCD",
+                                    "#AD6F3B", "#673770","#D14285", "#652926", "#C84248", 
+                                    "#8569D5", "#5E738F","#D1A33D", "#8A7C64","black"))(colbar+2)
+
+# 显示颜色和对应16进制RGB代码
+# show_col(Phylum_colors)
+
+mapping = as.data.frame(sample_data(ps2))
+mapping$SampleType = as.factor(mapping$SampleType)
+summary(mapping$SampleType)
+
+Taxonomies$SampleType = as.factor(Taxonomies$SampleType)
+
+summary(Taxonomies$SampleType)
+
+Repeated_quantityD = 98
+Repeated_quantityH = 115
+head(Taxonomies)
+aa = rep(0,nrow(Taxonomies))
+
+for(ii in 1:nrow(Taxonomies)){
+  if(Taxonomies[ii,4] == "H_bulk" ){
+    aa[ii] = Taxonomies$Abundance[ii] / Repeated_quantityH
+  }else{
+    aa[ii] = Taxonomies$Abundance[ii] / Repeated_quantityD
+  }
+}
+
+
+Taxonomies$Abundance = aa
+abundance = Taxonomies$Abundance
+Taxonomies$Abundance = abundance*100
+
+
+library("reshape2")
+#按照分组求均值
+colnames(Taxonomies) <- gsub(j,"aa",colnames(Taxonomies))
+Taxonomies$SampleType
+Taxonomies$aa <- as.character(Taxonomies$aa)
+Taxonomies$aa <- as.factor(Taxonomies$aa)
+by_cyl <- group_by(Taxonomies, SampleType,aa)  
+zhnagxu2 = dplyr :: summarise(by_cyl, sum(Abundance))
+#colnames(zhnagxu2) = c("group", j,"Abundance")
+head(zhnagxu2)
+
+sum(zhnagxu2$`sum(Abundance)`)
+
+
+##确定因子，这里通过求和按照从小到大的顺序得到因子
+##长变宽
+
+head(Taxonomies)
+
+Taxonomies2 = dcast(Taxonomies,aa ~ Sample,value.var = "Abundance")
+head(Taxonomies2)
+Taxonomies2[is.na(Taxonomies2)] <- 0
+aa = Taxonomies2
+# head(aa)
+
+n = ncol(aa)
+#增加一行，为整列的均值，计算每一列的均值，2就是表示列
+aa[n+1]=apply(aa[,c(2:ncol(aa))],1,sum)
+colnames(aa)[n+1] <- c("allsum")
+# str(aa)
+bb<- arrange(aa, allsum)
+# head(bb)
+bb = bb[c(1,ncol(bb))]
+cc<- arrange(bb, desc(allsum))
+# head(cc)
+##使用这个属的因子对下面数据进行排序
+library("plyr")
+head(zhnagxu2)
+colnames(zhnagxu2) <- c("group","aa","Abundance")
+
+zhnagxu2$aa = factor(zhnagxu2$aa,order = T,levels = cc$aa)
+zhnagxu3 = plyr::arrange(zhnagxu2,desc(aa))
+head(zhnagxu3)
+
+sum(zhnagxu3$Abundance)
+##制作标签坐标，标签位于顶端
+Taxonomies_x = ddply(zhnagxu3,"group", transform, label_y = cumsum(Abundance))
+head(Taxonomies_x )
+#标签位于中部
+Taxonomies_x = ddply(zhnagxu3,"group", transform, label_y = cumsum(Abundance) - 0.5*Abundance)
+head(Taxonomies_x,20 )
+Taxonomies_x$label = Taxonomies_x$aa
+#使用循环将堆叠柱状图柱子比较窄的别写标签，仅仅宽柱子写上标签
+for(i in 1:nrow(Taxonomies_x)){
+  if(Taxonomies_x[i,3] > label_show){
+    Taxonomies_x[i,5] = Taxonomies_x[i,5]
+  }else{
+    Taxonomies_x[i,5] = NA
+  }
+}
+library(ggalluvial)
+library(ggplot2)
+sum(Taxonomies_x$Abundance)
+
+##普通柱状图
+p4 <- ggplot(Taxonomies_x , aes(x =  group, y = Abundance, fill = aa, order = aa)) + 
+  geom_bar(stat = "identity",width = 0.5,color = "black") +
+  scale_fill_manual(values = Phylum_colors) +
+  theme(axis.title.x = element_blank()) +
+  theme(legend.text=element_text(size=6)) +
+  scale_y_continuous(name = "Abundance (%)")+
+  scale_x_discrete(limits = c(axis_order))+
+  geom_text(aes(y = label_y, label = label ),size = 4,family="Times New Roman",fontface = "bold.italic")
+print(p4)
+
+# install.packages("ggalluvial")
+p4 =p4+theme_bw()+
+  scale_y_continuous(expand = c(0,0))+
+  #geom_hline(aes(yintercept=0), colour="black", linetype=2) +
+  #geom_vline(aes(xintercept=0), colour="black", linetype="dashed") +
+  #scale_fill_manual(values = mi, guide = guide_legend(title = NULL))+
+  theme(
+    
+    panel.grid.major=element_blank(),
+    panel.grid.minor=element_blank(),
+    text=element_text(family="Times New Roman",face = "bold"),
+    plot.title = element_text(vjust = -8.5,hjust = 0.1),
+    axis.title.y =element_text(size = 20,face = "bold",colour = "black"),
+    axis.title.x =element_text(size = 24,face = "bold",colour = "black"),
+    axis.text = element_text(size = 20,face = "bold",family = "Times"),
+    axis.text.x = element_text(colour = "black",size = 14,family="Times New Roman"),
+    axis.text.y = element_text(colour = "black",size = 14,family="Times New Roman"),
+    
+    legend.text = element_text(size = 15,face = "bold.italic")
+    #legend.position = "none"#是否删除图例
+    
+  ) 
+p4
+
+FileName1 <- paste(path1,"/a2_",j,sub,"_bar",".pdf", sep = "")
+
+
+ggsave(FileName1, p4, width = 12, height =8, device = cairo_pdf, family = "Times New Roman" )
+
+
+##柱状图冲击图
+#stratum定义堆叠柱状图柱子内容，以weight定义柱子长度，alluvium定义连线
+head(Taxonomies_x )
+cs = Taxonomies_x$aa
+# head(cs)
+# as.factor(Taxonomies_x $Genus)
+# cs = as.character(Taxonomies_x $Genus)
+# cs1 = as.factor(cs)
+cs1 = cs
+#提取真正的因子的数量
+lengthfactor = length(levels(cs1))
+#提取每个因子对应的数量
+cs3 = summary (as.factor(cs1))
+cs4 = as.data.frame(cs3)
+cs4$id = row.names(cs4)
+#对因子进行排序
+df_arrange<- arrange(cs4, id)
+#对Taxonomies_x 对应的列进行排序
+Taxonomies_x1<- arrange(Taxonomies_x , aa)
+head(Taxonomies_x1)
+#构建flow的映射列Taxonomies_x 
+Taxonomies_x1$ID = factor(rep(c(1:lengthfactor), cs4$cs3))
+
+#colour = "black",size = 2,,aes(color = "black",size = 0.8)
+p3 = ggplot(Taxonomies_x1,
+            aes(x = group, stratum = aa, alluvium = ID,
+                weight = Abundance,
+                fill = aa, label = aa)) +
+  geom_flow() +
+  # geom_bar(width = 0.45)+
+  geom_stratum() +
+  #geom_text(stat = "stratum", size = 3,family="Times New Roman",fontface = "bold.italic") +
+  #theme(legend.position = "none") +
+  scale_fill_manual(values = Phylum_colors)+
+  #ggtitle("fow_plot")+
+  scale_x_discrete(limits = c(axis_order))+
+  geom_text(aes(y = label_y, label = label ),size = 4,family="Times New Roman",fontface = "bold.italic")+
+  labs(x="group",
+       y="Relative abundancce (%)",
+       title="")
+# p3
+?geom_stratum
+p3 =p3+theme_bw()+
+  scale_y_continuous(expand = c(0,0))+
+  #geom_hline(aes(yintercept=0), colour="black", linetype=2) +
+  #geom_vline(aes(xintercept=0), colour="black", linetype="dashed") +
+  #scale_fill_manual(values = mi, guide = guide_legend(title = NULL))+
+  theme(
+    
+    panel.grid.major=element_blank(),
+    panel.grid.minor=element_blank(),
+    text=element_text(family="Times New Roman",face = "bold"),
+    plot.title = element_text(vjust = -8.5,hjust = 0.1),
+    axis.title.y =element_text(size = 20,face = "bold",colour = "black"),
+    axis.title.x =element_text(size = 24,face = "bold",colour = "black"),
+    axis.text = element_text(size = 20,face = "bold",family = "Times"),
+    axis.text.x = element_text(colour = "black",size = 14,family="Times New Roman"),
+    axis.text.y = element_text(colour = "black",size = 14,family="Times New Roman"),
+    
+    legend.text = element_text(size = 15,face = "bold.italic")
+    #legend.position = "none"#是否删除图例
+    
+  ) 
+p3
+
+FileName2 <- paste(path1,"/a2_",j,sub,"_bar_flow",".pdf", sep = "")
+
+ggsave(FileName2, p3, width = 12, height =8, device = cairo_pdf, family = "Times New Roman" )
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,378 @@
+---
+title: "phyloseq_net_cor_Freq"
+author: "wentao"
+date: "2019年6月13日"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+### 基于网络中相关系数的统计及其可视化啊工作
+
+### 以期望寻找相关不同的一些东西
+
+```{r cars, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+
+
+library("dplyr")
+library("ggplot2")
+layouts = c("H_bulk","H_rhi","D_bulk","D_rhi")
+d = "all"
+layout1 = "H_bulk"
+layout2 = "D_bulk"
+# layout1 = "H_rhi"
+# layout2 = "D_rhi"
+
+## 基本参数设置
+# 存储otu-sample矩阵的文件名
+otu_sample_file <- paste("./data/",layout1,"_",d,"_net",".txt",sep = "")
+# sparcc cor 文件
+r_sparcc_file<-paste("sparcc_net_result_matrix/",layout1,"_",d,"/basis_corr/cor_sparcc.out",sep = "")
+# sparcc p-value 文件
+p_sparcc_file<-paste("sparcc_net_result_matrix/",layout1,"_",d,"/pvals/pvals_two_sided.txt",sep = "")
+
+
+# 文件读取
+otu <- read.delim(otu_sample_file,row.names=1)
+# 转置otu表
+otu <-t(otu)
+dim(otu)
+# 读取r值矩阵
+r_sparcc <- read.table(r_sparcc_file,row.names=1)
+# str(r_sparcc)
+r_sparcc = as.matrix(r_sparcc)
+# 读取p值矩阵
+p_sparcc <- read.table(p_sparcc_file,row.names=1)
+# str(p_sparcc)
+p_sparcc  = as.matrix(p_sparcc)
+
+#对角线相关为1，自身相关，所以去除
+# diag(r_sparcc)=rep(500,length(diag(r_sparcc)))
+# #改变矩阵维度
+# a = dim(p_sparcc) = c(24964,1)
+#因为我们矩阵上三角和下三角都是一样的，所以我提取上三角数据进行统计分析，下三角也行
+#注意上三角不包括对角，注意概念清晰
+corr_all = r_sparcc[lower.tri(r_sparcc)]
+p_all = p_sparcc[lower.tri(p_sparcc)]
+#是否挑选先不显著
+corr = data.frame(cor = corr_all,p = p_all)
+# corr =  filter(corr, p < 0.05)
+##做一张图的相关分布图表
+duration = corr$cor
+breaks = seq(-1, 1, by=0.05) 
+duration.cut = cut(duration, breaks, right=FALSE) 
+duration.freq = table(duration.cut)
+xcor = as.data.frame(duration.freq)
+head(xcor)
+colnames(xcor) = c("breaks",layout1)
+
+xcor$ID = seq(-1, 1, by=0.05)[1:c(length(seq(-1, 1, by=0.05) )-1)] 
+xcor$health = xcor$H_bulk/sum( xcor$H_bulk)
+
+
+
+## 基本参数设置
+# 存储otu-sample矩阵的文件名
+otu_sample_file <- paste("./data/",layout2,"_",d,"_net",".txt",sep = "")
+# sparcc cor 文件
+r_sparcc_file<-paste("sparcc_net_result_matrix/",layout2,"_",d,"/basis_corr/cor_sparcc.out",sep = "")
+# sparcc p-value 文件
+p_sparcc_file<-paste("sparcc_net_result_matrix/",layout2,"_",d,"/pvals/pvals_two_sided.txt",sep = "")
+
+# 读取r值矩阵
+r_sparcc <- read.table(r_sparcc_file,row.names=1)
+# str(r_sparcc)
+r_sparcc = as.matrix(r_sparcc)
+# 读取p值矩阵
+p_sparcc <- read.table(p_sparcc_file,row.names=1)
+# str(p_sparcc)
+p_sparcc  = as.matrix(p_sparcc)
+
+corr_all = r_sparcc[lower.tri(r_sparcc)]
+p_all = p_sparcc[lower.tri(p_sparcc)]
+#是否挑选先不显著
+corr = data.frame(cor = corr_all,p = p_all)
+head(corr)
+# corr =  filter(corr, p < 0.05)
+
+
+
+
+
+
+
+
+##做一张图的相关分布图表
+duration = corr$cor
+breaks = seq(-1, 1, by=0.05) 
+duration.cut = cut(duration, breaks, right=FALSE) 
+duration.freq = table(duration.cut)
+xcor1 = as.data.frame(duration.freq)
+colnames(xcor1) = c("duration.cut",layout2)
+
+head(xcor1)
+xcor1$disease = xcor1$D_bulk/sum( xcor1$D_bulk)
+
+fil_cor = cbind(xcor,xcor1)
+
+head(fil_cor)
+fil_cor$breaks = NULL
+fil_cor$duration.cut = NULL
+fil_cor$H_bulk = NULL
+fil_cor$D_bulk = NULL
+mi = c("#377EB8","#E41A1C" )
+library(reshape2)
+fil = melt(fil_cor,id.vars = "ID",variable.name = "breaks",value.name = "Freq")
+head(fil)
+p = ggplot(fil,aes(x = ID,y = Freq,fill = breaks)) + 
+  geom_bar(stat = "identity",position = "dodge",color = "black",size = 0.1)+theme_classic()+
+  scale_fill_manual(values = mi)
+# p = 
+
+p + scale_y_continuous(limits = c(0,max(fil$Freq)))
+path = "./net_cor_Freq/"
+dir.create(path)
+plotname = paste(path,layout1,layout2,".pdf",sep = "")
+ggsave(plotname,p,width = 160, height = 80, unit = 'mm')
+
+
+
+
+
+
+
+```
+### 只选择显著的关系来进行相关关系的可视化
+
+```{r network pro, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+#以期望寻找相关不同的一些东西
+
+
+library("dplyr")
+library("ggplot2")
+layouts = c("H_bulk","H_rhi","D_bulk","D_rhi")
+d = "all"
+layout1 = "H_bulk"
+layout2 = "D_bulk"
+# layout1 = "H_rhi"
+# layout2 = "D_rhi"
+
+## 基本参数设置
+# 存储otu-sample矩阵的文件名
+otu_sample_file <- paste("./data/",layout1,"_",d,"_net",".txt",sep = "")
+# sparcc cor 文件
+r_sparcc_file<-paste("sparcc_net_result_matrix/",layout1,"_",d,"/basis_corr/cor_sparcc.out",sep = "")
+# sparcc p-value 文件
+p_sparcc_file<-paste("sparcc_net_result_matrix/",layout1,"_",d,"/pvals/pvals_two_sided.txt",sep = "")
+
+
+# 文件读取
+otu <- read.delim(otu_sample_file,row.names=1)
+# 转置otu表
+otu <-t(otu)
+dim(otu)
+# 读取r值矩阵
+r_sparcc <- read.table(r_sparcc_file,row.names=1)
+# str(r_sparcc)
+r_sparcc = as.matrix(r_sparcc)
+# 读取p值矩阵
+p_sparcc <- read.table(p_sparcc_file,row.names=1)
+# str(p_sparcc)
+p_sparcc  = as.matrix(p_sparcc)
+
+#对角线相关为1，自身相关，所以去除
+# diag(r_sparcc)=rep(500,length(diag(r_sparcc)))
+# #改变矩阵维度
+# a = dim(p_sparcc) = c(24964,1)
+#因为我们矩阵上三角和下三角都是一样的，所以我提取上三角数据进行统计分析，下三角也行
+#注意上三角不包括对角，注意概念清晰
+corr_all = r_sparcc[lower.tri(r_sparcc)]
+p_all = p_sparcc[lower.tri(p_sparcc)]
+#是否挑选先不显著
+corr = data.frame(cor = corr_all,p = p_all)
+corr =  filter(corr, p < 0.05)
+##做一张图的相关分布图表
+duration = corr$cor
+breaks = seq(-1, 1, by=0.05) 
+duration.cut = cut(duration, breaks, right=FALSE) 
+duration.freq = table(duration.cut)
+xcor = as.data.frame(duration.freq)
+head(xcor)
+colnames(xcor) = c("breaks",layout1)
+
+xcor$ID = seq(-1, 1, by=0.05)[1:c(length(seq(-1, 1, by=0.05) )-1)] 
+
+xcor$health = xcor$H_bulk/sum( xcor$H_bulk)
+
+
+# layout2 = "D_rhi"
+
+## 基本参数设置
+# 存储otu-sample矩阵的文件名
+otu_sample_file <- paste("./data/",layout2,"_",d,"_net",".txt",sep = "")
+# sparcc cor 文件
+r_sparcc_file<-paste("sparcc_net_result_matrix/",layout2,"_",d,"/basis_corr/cor_sparcc.out",sep = "")
+# sparcc p-value 文件
+p_sparcc_file<-paste("sparcc_net_result_matrix/",layout2,"_",d,"/pvals/pvals_two_sided.txt",sep = "")
+
+# 读取r值矩阵
+r_sparcc <- read.table(r_sparcc_file,row.names=1)
+# str(r_sparcc)
+r_sparcc = as.matrix(r_sparcc)
+# 读取p值矩阵
+p_sparcc <- read.table(p_sparcc_file,row.names=1)
+# str(p_sparcc)
+p_sparcc  = as.matrix(p_sparcc)
+
+corr_all = r_sparcc[lower.tri(r_sparcc)]
+p_all = p_sparcc[lower.tri(p_sparcc)]
+#是否挑选先不显著
+corr = data.frame(cor = corr_all,p = p_all)
+head(corr)
+corr =  filter(corr, p < 0.05)
+
+##做一张图的相关分布图表
+duration = corr$cor
+breaks = seq(-1, 1, by=0.05) 
+duration.cut = cut(duration, breaks, right=FALSE) 
+duration.freq = table(duration.cut)
+xcor1 = as.data.frame(duration.freq)
+colnames(xcor1) = c("duration.cut",layout2)
+
+head(xcor1)
+y
+
+xcor1$disease = xcor1$D_bulk/sum( xcor1$D_bulk)
+
+
+fil_cor = cbind(xcor,xcor1)
+
+head(fil_cor)
+
+fil_cor$breaks = NULL
+fil_cor$duration.cut = NULL
+fil_cor$H_bulk = NULL
+fil_cor$D_bulk = NULL
+library(reshape2)
+
+mi = c("#377EB8","#E41A1C" )
+fil = melt(fil_cor,id.vars = "ID",variable.name = "breaks",value.name = "Freq")
+fil$Freq = fil$Freq*100
+head(fil)
+p = ggplot(fil,aes(x = ID,y = Freq,fill = breaks)) + 
+  geom_bar(stat = "identity",position = "dodge",color = "black",size = 0.1)+theme_classic()+
+  scale_fill_manual(values = mi)
+# p = 
+
+p + scale_y_continuous(limits = c(0,max(fil$Freq)))
+
+path = "./net_cor_Freq/"
+dir.create(path)
+plotname = paste(path,layout1,layout2,005,".pdf",sep = "")
+ggsave(plotname,p,width = 160, height = 80, unit = 'mm')
+
+
+
+```
+
+
+<!-- ```{r network pro, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE} -->
+
+<!-- ``` -->
+
+
+
+<!-- ```{r network pro, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE} -->
+
+<!-- ``` -->
+
+
+<!-- ```{r network pro, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE} -->
+
+<!-- ``` -->
+
+
+
+<!-- ```{r network pro, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE} -->
+
+<!-- ``` -->
+
+
+<!-- ```{r network pro, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE} -->
+
+<!-- ``` -->
+
+
+
+<!-- ```{r network pro, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE} -->
+
+<!-- ``` -->
+
+
+<!-- ```{r network pro, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE} -->
+
+<!-- ``` -->
+
+
+<!-- ```{r network pro, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE} -->
+
+<!-- ``` -->
+
+
+<!-- ```{r network pro, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE} -->
+
+<!-- ``` -->
+
+
+
+
+<!-- ```{r network pro, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE} -->
+
+<!-- ``` -->
+
+
+<!-- ```{r network pro, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE} -->
+
+<!-- ``` -->
+
+
+
+
+<!-- ```{r network pro, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE} -->
+
+<!-- ``` -->
+
+
+<!-- ```{r network pro, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE} -->
+
+<!-- ``` -->
+
+
+
+
+<!-- ```{r network pro, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE} -->
+
+<!-- ``` -->
+
+
+<!-- ```{r network pro, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE} -->
+
+<!-- ``` -->
+
+
+
+
+<!-- ```{r network pro, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE} -->
+
+<!-- ``` -->
+
+
+<!-- ```{r network pro, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE} -->
+
+<!-- ``` -->
+
+
+
+
