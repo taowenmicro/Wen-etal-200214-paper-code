@@ -1,0 +1,444 @@
+---
+title: "random_forest_add_sample"
+author: "wentao"
+date: "2019年7月11日"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 随机森林模型持续更新
+```{R}
+#清空内存
+rm(list=ls()) 
+###添加样品
+#预测项目NCBI12 健康全部预测为发病
+
+# ps6_0 = readRDS("./add_sample_for_predict/NCBI33/a9_usearch_otu_table/ps_NCBI33.rds")
+
+##预测项目NCBI18 这里取尚未采取操作的样品预测成功
+ps6_1 = readRDS("./add_sample_for_predict/NCBI_18预测健康可用/ps_NCBI10.rds")
+
+###预测项目No71==大部分预测为发病，类似细菌
+# ps6_2 = readRDS("./add_sample_for_predict/No_71/a9_usearch_otu_table/ps_NCBI71.rds")
+
+# ps6_2 <- subset_samples(ps6_2,SampleType %in% c("CK1","CK2","CK3"));ps6_2
+
+
+#预测项目NCBI12 健康全部预测为发病
+ps6_3 = readRDS("./add_sample_for_predict/NCBI12/a9_usearch_otu_table/ps_NCBI12.rds")
+
+#预测项目NCBI13 健康全部预测为发病
+ps6_4 = readRDS("./add_sample_for_predict/NCBI13/a9_usearch_otu_table/ps_NCBI13.rds")
+
+
+#预测项目NCBI15 健康全部预测为发病
+ps6_5 = readRDS("./add_sample_for_predict/NCBI15/a9_usearch_otu_table/ps_NCBI15.rds")
+
+
+#预测项目NCBI16 健康全部预测为发病
+ps6_6 = readRDS("./add_sample_for_predict/NCBI16/a9_usearch_otu_table/ps_NCBI16.rds")
+
+
+#预测项目NCBI19 健康全部预测为发病
+ps6_7 = readRDS("./add_sample_for_predict/NCBI19/a9_usearch_otu_table/ps_NCBI19.rds")
+
+
+#预测项目NCBI29 健康全部预测
+ps6_8 = readRDS("./add_sample_for_predict/NCBI29/a9_usearch_otu_table/ps_NCBI29.rds")
+
+
+#预测项目NCBI34 健康全部预测为发病
+ps6_9 = readRDS("./add_sample_for_predict/NCBI34/a9_usearch_otu_table/ps_NCBI34.rds")
+
+
+#owe
+ps6_10 = readRDS("./add_sample_for_predict/owe//a9_usearch_otu_table/ps_owe.rds")
+ps6_10
+
+#owe
+ps6_16 = readRDS("./add_sample_for_predict/owe//a9_usearch_otu_table/ps_owe.rds")
+ps6_16
+map = as.data.frame(sample_data(ps6_16))
+map
+map$SampleType = paste(map$SampleTypeDH,map$zone,sep = "_")
+sample_data(ps6_16) = map
+
+head( map,n = 40)
+#
+# ps6_16 <- subset_samples(ps6_16,ID %in% c("33.R1.fq.gz.fastq","32.R1.fq.gz.fastq","31.R1.fq.gz.fastq","26.R1.fq.gz.fastq","29.R1.fq.gz.fastq","28.R1.fq.gz.fastq"));ps6_16
+
+ps6_16 <- subset_samples(ps6_16,SampleType %in% c("WH_bulk","WD_bulk"));ps6_16
+# ps6_16 <- subset_samples(ps6_16,SampleType %in% c("WH_bulk","WD_bulk","AH_bulk","AD_bulk"));ps6_16
+
+
+
+# ps6 = readRDS("./add_sample_for_model/209/ps_NCBI8.rds")
+# 
+# ps6
+##运行自定义函数
+## ps_cs = merge_ps(ps1 = ps7,ps2 = ps6,model = 2)
+source("function_ramdomforest.R")
+```
+### 添加研究，跟新模型
+
+```{r cars}
+#############·····························使用已经挑好的OTU·········································
+
+library(phyloseq)
+library("tidyverse")
+## 导入数据，去除数量较低的序列
+ps7 = readRDS("./ps6_duo.rds")
+ps7 <- subset_samples(ps7,SampleType %in% c("D_bulk","H_bulk"))
+ps7
+ps7 <- subset_samples(ps7,!Description %in% c("NCBI_9","No_49"))
+ps7
+ps7
+####进行phyloseq下游分析
+# ps7 <- prune_samples(sample_sums(ps7) >=500,ps7);ps7
+ps7
+ps7 = filter_taxa(ps7, function(x) sum(x ) > 0 , TRUE);ps7
+
+ps_add_out = ps7
+
+
+# map = as.data.frame(sample_data(ps6))
+# map
+# map$SampleType = paste(map$fianl_SampleType,map$zone,sep = "_")
+# sample_data(ps6) = map
+# ps_add_out =  merge_ps(ps1 = ps_add_out,ps2 = ps6_0,model = 2)#不要
+ps_add_out =  merge_ps(ps1 = ps_add_out,ps2 = ps6_1,model = 2)
+# ps_add_out =  merge_ps(ps1 = ps_add_out,ps2 = ps6_2,model = 2)#增就爱发病样品
+# ps_add_out =  merge_ps(ps1 = ps_add_out,ps2 = ps6_3,model = 2)#模型变差
+# ps_add_out =  merge_ps(ps1 = ps_add_out,ps2 = ps6_4,model = 2)#不要··减少发病样品
+ps_add_out =  merge_ps(ps1 = ps_add_out,ps2 = ps6_5,model = 2)
+ps_add_out =  merge_ps(ps1 = ps_add_out,ps2 = ps6_6,model = 2)
+ps_add_out =  merge_ps(ps1 = ps_add_out,ps2 = ps6_7,model = 2)
+ps_add_out =  merge_ps(ps1 = ps_add_out,ps2 = ps6_8,model = 2)
+ps_add_out =  merge_ps(ps1 = ps_add_out,ps2 = ps6_9,model = 2)
+# ps_add_out =  merge_ps(ps1 = ps_add_out,ps2 = ps6_10,model = 2)
+ps_add_out =  merge_ps(ps1 = ps_add_out,ps2 = ps6_16,model = 2)
+
+ps_add_out 
+
+# saveRDS(ps_add_out ,"./ps_final_model.rds")
+
+
+ps7= ps_add_out 
+####进行phyloseq下游分析
+# ps7 <- prune_samples(sample_sums(ps7) >=500,ps7);ps7
+# ps7
+ps7 = filter_taxa(ps7, function(x) sum(x ) > 0 , TRUE);ps7
+ps7  = transform_sample_counts(ps7, function(x) x / sum(x) );ps7
+
+
+
+mapping = as.data.frame(sample_data(ps7))
+mapping$SampleType
+
+table(mapping$SampleType)
+table(mapping$Description)
+vegan_otu <-  function(physeq){
+  OTU <-  otu_table(physeq)
+  if(taxa_are_rows(OTU)){
+    OTU <-  t(OTU)
+  }
+  return(as(OTU,"matrix"))
+}
+otutab = as.data.frame(t(vegan_otu(ps7)))
+dim(otutab)
+head(otutab)
+mapping7 = as.data.frame(sample_data(ps7))
+mapping7$SampleType
+library(randomForest)
+
+# otutab need transposition for randomForest function
+otutab_t = as.data.frame(t(otutab))
+
+
+# Set classification info.
+otutab_t$group = factor(mapping7$SampleType,levels= c("D_bulk","H_bulk"))
+colnames(otutab_t) = paste("OTU",colnames(otutab_t),sep = "")
+# set random seed for reproducible
+set.seed(315)
+# set.seed(23)
+# RandomForest Classification
+model_add= randomForest(OTUgroup ~ ., data=otutab_t, importance=TRUE, proximity=TRUE)
+
+print(model_add)
+
+#预测项目owe
+model = model_add
+# model = model_orig
+ps6 = readRDS("./add_sample_for_predict/owe//a9_usearch_otu_table/ps_owe.rds")
+ps6
+map = as.data.frame(sample_data(ps6))
+map
+map$SampleType = paste(map$SampleTypeDH,map$zone,sep = "_")
+sample_data(ps6) = map
+
+result = predict_rand(ps7,ps6,model = model)
+result[[2]]
+result[[1]]
+
+##No217
+
+ps6 = readRDS("./add_sample_for_predict/No217//a9_usearch_otu_table/ps_NCBI2.rds")
+ps6
+map = as.data.frame(sample_data(ps6))
+map
+map$SampleType = paste(map$SampleTypeDH,map$zone,sep = "_")
+sample_data(ps6) = map
+
+result = predict_rand(ps7,ps6,model = model)
+result[[2]]
+result[[1]]
+
+
+###No218：这个研究采样自香蕉20厘米的根际，意外的是将发病和健康预测相反
+ps6 = readRDS("./add_sample_for_predict/No218//a9_usearch_otu_table/ps_NCBI2.rds")
+ps6
+map = as.data.frame(sample_data(ps6))
+map
+map$SampleType = paste(map$SampleTypeDH,map$zone,sep = "_")
+sample_data(ps6) = map
+
+result = predict_rand(ps7,ps6,model = model)
+result[[2]]
+result[[1]]
+
+
+###No25：刘红军师兄样本,土体大部分预测为发病
+
+ps6 = readRDS("./add_sample_for_predict/No_25//a9_usearch_otu_table/ps_NCBI2.rds")
+ps6
+map = as.data.frame(sample_data(ps6))
+map
+map$SampleType = paste(map$SampleTypeDH,map$zone,sep = "_")
+sample_data(ps6) = map
+
+result = predict_rand(ps7,ps6,model = model)
+result[[2]]
+result[[1]]
+
+
+###No224
+ps6 = readRDS("./add_sample_for_predict/No224//a9_usearch_otu_table/ps_NCBI2.rds")
+ps6
+map = as.data.frame(sample_data(ps6))
+map
+map$SampleType = paste(map$SampleTypeDH,map$zone,sep = "_")
+sample_data(ps6) = map
+
+result = predict_rand(ps7,ps6,model = model)
+result[[2]]
+result[[1]]
+
+###liuhongjun
+ps6 = readRDS("./add_sample_for_predict/liuhongjun//a9_usearch_otu_table/ps_NCBI2.rds")
+ps6
+map = as.data.frame(sample_data(ps6))
+map
+map$SampleType = paste(map$SampleTypeDH,map$zone,sep = "_")
+sample_data(ps6) = map
+
+result = predict_rand(ps7,ps6,model = model)
+result[[2]]
+result[[1]]
+
+
+
+```
+
+## 源模型训练
+
+```{r pressure, echo=FALSE}
+## 导入数据，去除数量较低的序列
+ps7 = readRDS("./ps6_duo.rds")
+ps7 
+ps7 <- subset_samples(ps7,SampleType %in% c("D_bulk","H_bulk"))
+ps7
+ps7 <- subset_samples(ps7,!Description %in% c("NCBI_9","No_49"))
+ps7
+####进行phyloseq下游分析
+# ps7 <- prune_samples(sample_sums(ps7) >=500,ps7);ps7
+ps7
+ps7 = filter_taxa(ps7, function(x) sum(x ) > 0 , TRUE);ps7
+ps7  = transform_sample_counts(ps7, function(x) x / sum(x) );ps7
+
+####进行phyloseq下游分析
+# ps7 <- prune_samples(sample_sums(ps7) >=500,ps7);ps7
+# ps7
+ps7 = filter_taxa(ps7, function(x) sum(x ) > 0 , TRUE);ps7
+ps7
+
+
+mapping = as.data.frame(sample_data(ps7))
+table(mapping$SampleType)
+table(mapping$Description)
+vegan_otu <-  function(physeq){
+  OTU <-  otu_table(physeq)
+  if(taxa_are_rows(OTU)){
+    OTU <-  t(OTU)
+  }
+  return(as(OTU,"matrix"))
+}
+otutab = as.data.frame(t(vegan_otu(ps7)))
+dim(otutab)
+
+mapping7 = as.data.frame(sample_data(ps7))
+
+table(mapping7$Description)
+
+library(randomForest)
+
+# otutab need transposition for randomForest function
+otutab_t = as.data.frame(t(otutab))
+
+
+# Set classification info.
+otutab_t$group = factor(mapping7$SampleType,levels= c("D_bulk","H_bulk"))
+colnames(otutab_t) = paste("OTU",colnames(otutab_t),sep = "")
+# set random seed for reproducible
+set.seed(315)
+
+# RandomForest Classification
+model_orig = randomForest(OTUgroup ~ ., data=otutab_t, importance=TRUE, proximity=TRUE)
+
+print(model_orig)
+```
+### 由于这部分预测样品后期会大量增加，所以这部分代码先不做跟新
+
+策略就是凡是预测不准确的，首先对这些样品进行独立随机森林建模，如果可以区分，就加入旧的真菌枯萎病模型中跟新模型。
+
+```{R}
+##使用原来模型和跟新模型来做预测
+##源模型
+model = model_orig
+##更新模型
+model = model_add
+```
+### 预测样品 持续增加，持续预测
+```{R}
+
+## 细菌枯萎病样品，不做预测
+# ps6 = readRDS("./add_sample_for_predict/No_166//ps_NCBI10.rds")
+# result = predict_rand(ps7,ps6)
+# result[[2]]
+
+##预测项目1大豆连坐和轮作的，轮作预测为健康，连坐部分预测为发病
+ps6 = readRDS("./add_sample_for_predict/NCBI_14预测健康可用/ps_NCBI10.rds")
+result = predict_rand(ps7,ps6,model = model)
+result[[2]]
+result[[1]]
+##预测项目NCBI18 这里取尚未采取操作的样品预测成功
+ps6 = readRDS("./add_sample_for_predict/NCBI_18预测健康可用/ps_NCBI10.rds")
+result = predict_rand(ps7,ps6,model = model)
+result[[2]]
+result[[1]]
+###预测项目NCBI9    添加NCBI9号之后发现模型预测有一些问题
+# ps6 = readRDS("./add_sample_for_predict/NCBI_9预测发病可用/ps_NCBI10.rds")
+# map = as.data.frame(sample_data(ps6))
+# map
+# map$SampleType = paste(map$orig_SampleType,map$zone,sep = "_")
+# sample_data(ps6) = map
+# result = predict_rand(ps7,ps6,model = model_add)
+# result[[2]]
+# result[[1]]
+
+###预测项目No71==大部分预测为发病，类似细菌
+ps6 = readRDS("./add_sample_for_predict/No_71/a9_usearch_otu_table/ps_NCBI71.rds")
+result = predict_rand(ps7,ps6,model = model_add)
+result[[2]]
+result[[1]]
+
+
+#预测项目NCBI12 健康全部预测为发病
+ps6 = readRDS("./add_sample_for_predict/NCBI12/a9_usearch_otu_table/ps_NCBI12.rds")
+
+
+result = predict_rand(ps7,ps6,model =model_add)
+result[[2]]
+result[[1]]
+
+
+
+#预测项目NCBI13 健康全部预测为发病
+ps6 = readRDS("./add_sample_for_predict/NCBI13/a9_usearch_otu_table/ps_NCBI13.rds")
+
+
+result = predict_rand(ps7,ps6,model = model_add)
+result[[2]]
+result[[1]]
+
+
+#预测项目NCBI15 健康全部预测为发病
+ps6 = readRDS("./add_sample_for_predict/NCBI15/a9_usearch_otu_table/ps_NCBI15.rds")
+
+
+result = predict_rand(ps7,ps6,model = model_add)
+result[[2]]
+result[[1]]
+
+#预测项目NCBI12 健康全部预测为发病
+ps6 = readRDS("./add_sample_for_predict/NCBI16/a9_usearch_otu_table/ps_NCBI16.rds")
+
+
+result = predict_rand(ps7,ps6,model = model_add)
+result[[2]]
+result[[1]]
+
+#预测项目NCBI12 健康全部预测为发病
+ps6 = readRDS("./add_sample_for_predict/NCBI19/a9_usearch_otu_table/ps_NCBI19.rds")
+
+
+result = predict_rand(ps7,ps6,model = model_add)
+result[[2]]
+result[[1]]
+
+#预测项目NCBI12 健康全部预测
+ps6 = readRDS("./add_sample_for_predict/NCBI29/a9_usearch_otu_table/ps_NCBI29.rds")
+
+
+result = predict_rand(ps7,ps6,model =model_add)
+result[[2]]
+result[[1]]
+
+
+#预测项目NCBI12 健康全部预测为发病
+# ps6 = readRDS("./add_sample_for_predict/NCBI33/a9_usearch_otu_table/ps_NCBI33.rds")
+# 
+# 
+# result = predict_rand(ps7,ps6,model = model_add)
+# result[[2]]
+# result[[1]]
+
+
+#预测项目NCBI12 健康全部预测为发病
+ps6 = readRDS("./add_sample_for_predict/NCBI34/a9_usearch_otu_table/ps_NCBI34.rds")
+ps6
+
+result = predict_rand(ps7,ps6,model = model)
+result[[2]]
+result[[1]]
+
+
+
+#预测项目owe
+model = model_add
+model = model_orig
+ps6 = readRDS("./add_sample_for_predict/owe//a9_usearch_otu_table/ps_owe.rds")
+ps6
+map = as.data.frame(sample_data(ps6))
+map
+map$SampleType = paste(map$SampleTypeDH,map$zone,sep = "_")
+sample_data(ps6) = map
+
+result = predict_rand(ps7,ps6,model = model)
+result[[2]]
+result[[1]]
+
+
+```
