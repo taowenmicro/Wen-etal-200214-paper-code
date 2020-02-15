@@ -1,0 +1,871 @@
+---
+title: "phy_alpha_beta_bar_ven"
+author: "wentao"
+date: "2019年4月15日"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+## 分析前准备
+```{r value tu pick, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+#清空内存#######
+#rm(list=ls()) 
+#堆叠柱状图参数设置
+#a为输出文件主名
+a <- "16S_plot_all"
+#j选择使用哪个等级数据来做堆叠柱状图
+j = "Phylum"
+#j = "Class"
+#j = "Order" 
+#j =  "Family" 
+#j = "Genus" 
+##k 是否过滤或者设置过滤值为多少
+k= 0
+#柱状图坐标轴排序顺序
+axis_order = c("H_bulk","D_bulk")
+
+#韦恩图设置参数
+num = 4
+path = getwd()
+
+dir.create("./all_diversity")
+
+path = paste(path,"/all_diversity/",sep = "")
+
+path
+
+load('./bac_base_diversity.RData')
+
+
+```
+
+
+
+
+```{r pre alpha and beta, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+library("phyloseq")
+library("ggplot2")
+# library("dada2")
+library("tidyverse")
+library("plyr"); packageVersion("plyr")
+library("vegan")
+library("ggpubr") 
+library("scales")
+
+
+# mi=c("#1B9E77" ,"#D95F02", "#7570B3","#E7298A","#E6AB02", "#B3DE69")
+# mi = brewer.pal(2,"Set1")
+mi = c("#377EB8","#E41A1C" )
+mythemeBETA <-  theme_bw()+
+  
+  theme(
+    panel.grid.major=element_blank(),
+    panel.grid.minor=element_blank(),
+    
+    plot.title = element_text(vjust = -8.5,hjust = 0.1),
+    axis.title.y =element_text(size = 24,face = "bold",colour = "black"),
+    axis.title.x =element_text(size = 24,face = "bold",colour = "black"),
+    axis.text = element_text(size = 20,face = "bold"),
+    axis.text.x = element_text(colour = "black",size = 24),
+    axis.text.y = element_text(colour = "black",size = 24),
+    legend.text = element_text(size = 20,face = "bold")
+    #legend.position = "none"#是否删除图例
+    
+  ) 
+mythemealpha <- theme_bw()+
+  #theme_classic()+
+  # scale_color_manual(values = mi, guide = guide_legend(title = NULL))+
+  # scale_fill_manual(values = mi, guide = guide_legend(title = NULL))+
+  theme(
+    
+    panel.grid.major=element_blank(),
+    panel.grid.minor=element_blank(),
+    
+    plot.title = element_text(vjust = -8.5,hjust = 0.1),
+    axis.title.y =element_text(size = 20,face = "bold",colour = "black"),
+    axis.title.x =element_text(size = 24,face = "bold",colour = "black"),
+    axis.text = element_text(size = 20,face = "bold"),
+    axis.text.x = element_text(colour = "black",size = 24),
+    axis.text.y = element_text(colour = "black",size = 24),
+    legend.text = element_text(size = 20,face = "bold"))+
+  #theme(legend.position = c(0.1,0.2))+
+
+  theme(strip.text.x = element_text(size=15, angle=0),
+        strip.text.y = element_text(size=12, face="bold"),
+        strip.background = element_rect(colour="blue", fill="#CCCCFF"))
+```
+
+## 导入数据 最后一次过滤数据
+
+
+```{r imput phyloseq data, echo=TRUE, message=FALSE, warning=FALSE}
+## 导入数据,这里是接着随机森林模型之后的分析。
+library(phyloseq)
+
+#多样性分析
+ps_XX = readRDS("./ps_all_OTU.rds")
+
+ps_add_out = ps_XX
+# saveRDS(ps_XX,"./pa_all_OTU.rds")
+
+library(tidyverse)
+head(design)
+design <-as.data.frame(sample_data(ps_add_out))
+design$ID = row.names(design)
+
+library(tidyverse)
+wta <- filter(design,Description %in% c("NCBI_25") )
+head(wta)
+dim(wta)
+wtb <- as.character(sample(wta$ID, size = 406))
+
+design$Description
+head(wtb)
+##去除抽出来的这些样品
+design1 <- filter(design,!design$ID %in% c(wtb))
+dim(design1)
+head(design1)
+# row.names(design1) = design1$ID
+# design1$ID = NULL
+#对phyloseq对象按照我们要的数据取子集
+ps <- subset_samples(ps_add_out,colnames(otu_table(ps_add_out)) %in% design1$ID)
+ps
+#table(sample_sums(ps1))
+# ps <- prune_samples(sample_sums(ps) >=500,ps);ps
+ps
+
+
+
+ps1 = ps
+##按照最小序列数抽平
+total = mean(sample_sums(ps1));total
+total = 3000
+standf = function(x,t = total)round(t*(x/sum(x)))
+ps11 = transform_sample_counts(ps1,standf)
+
+mapping = as.data.frame(sample_data(ps1))
+
+table(mapping$Description)
+table(mapping$SampleType)
+```
+
+### 绘制堆叠柱状图表示不同分类等级信息
+
+```{r bar and flow, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+library(extrafont)
+# loadfonts(device="win")       #Register fonts for Windows bitmap output
+# fonts()
+
+i = ps1
+
+library("tidyverse")
+colnames(tax_table(ps1))
+##这里我们过滤一定阈值的otu，会出现最后堆叠柱状图总体丰度高于100%的情况，这是合理的
+###########绘制不同分类等级的柱状图
+Taxonomies <- i %>%
+  tax_glom(taxrank = j) %>%                     # agglomerate at Class level Class
+  transform_sample_counts(function(x) {x/sum(x)} )%>%# Transform to rel. abundance
+  psmelt() %>%                                         # Melt to long format
+  filter(Abundance >= k) %>%                         # Filter out low abundance taxa
+  arrange(Phylum)
+
+# head(Taxonomies)
+# dim(Taxonomies)
+colbar <- dim(unique(select(Taxonomies, one_of(j))))[1]
+library("scales")
+Phylum_colors = colorRampPalette(c( brewer.pal(2,"Set1"),"#CBD588", "#599861", "orange","#DA5724", "#508578", "#CD9BCD",
+                                    "#AD6F3B", "#673770","#D14285", "#652926", "#C84248", 
+                                    "#8569D5", "#5E738F","#D1A33D", "#8A7C64","black"))(colbar)
+
+
+# 显示颜色和对应16进制RGB代码
+show_col(Phylum_colors)
+
+
+Taxonomies$Abundance = Taxonomies$Abundance * 100
+# head(Taxonomies)
+
+#按照分组求均值
+colnames(Taxonomies) <- gsub(j,"aa",colnames(Taxonomies))
+by_cyl <- group_by(Taxonomies, SampleType,aa)  
+zhnagxu2 = dplyr :: summarise(by_cyl, mean(Abundance))
+#colnames(zhnagxu2) = c("group", j,"Abundance")
+# head(zhnagxu2)
+
+##确定因子，这里通过求和按照从小到大的顺序得到因子
+##长变宽
+library(reshape2)
+# head(Taxonomies)
+
+Taxonomies2 = dcast(Taxonomies,aa ~ Sample,value.var = "Abundance")
+head(Taxonomies2)
+Taxonomies2[is.na(Taxonomies2)] <- 0
+aa = Taxonomies2
+# head(aa)
+
+n = ncol(aa)
+#增加一行，为整列的均值，计算每一列的均值，2就是表示列
+aa[n+1]=apply(aa[,c(2:ncol(aa))],1,sum)
+colnames(aa)[n+1] <- c("allsum")
+# str(aa)
+bb<- arrange(aa, allsum)
+# head(bb)
+bb = bb[c(1,ncol(bb))]
+cc<- arrange(bb, desc(allsum))
+# head(cc)
+##使用这个属的因子对下面数据进行排序
+library("plyr")
+head(zhnagxu2)
+colnames(zhnagxu2) <- c("group","aa","Abundance")
+zhnagxu2$aa = factor(zhnagxu2$aa,levels = cc$aa)
+zhnagxu3 = plyr::arrange(zhnagxu2,desc(aa))
+# head(zhnagxu3)
+##制作标签坐标，标签位于顶端
+# Taxonomies_x = ddply(zhnagxu3,"group", transform, label_y = cumsum(Abundance))
+# head(Taxonomies_x )
+#标签位于中部
+Taxonomies_x = ddply(zhnagxu3,"group", transform, label_y = cumsum(Abundance) - 0.5*Abundance)
+head(Taxonomies_x,20 )
+Taxonomies_x$label = Taxonomies_x$aa
+#使用循环将堆叠柱状图柱子比较窄的别写标签，仅仅宽柱子写上标签
+for(i in 1:nrow(Taxonomies_x)){
+  if(Taxonomies_x[i,3] > 3){
+    Taxonomies_x[i,5] = Taxonomies_x[i,5]
+  }else{
+    Taxonomies_x[i,5] = NA
+  }
+}
+library(ggalluvial)
+library(ggplot2)
+##普通柱状图
+# ,labels = c("Disease","Health")
+p1 <- ggplot(Taxonomies_x , aes(x =  group, y = Abundance, fill = aa, order = aa)) + 
+  geom_bar(stat = "identity",width = 0.5,color = "black") +
+  scale_fill_manual(values = Phylum_colors,guide  = guide_legend(title = NULL)) +
+  theme(axis.title.x = element_blank()) +
+  theme(legend.text=element_text(size=6)) +
+  scale_y_continuous(name = "Abundance (%)")+
+  scale_x_discrete(limits = c(axis_order),labels = c("D","H"))#+
+  # geom_text(aes(y = label_y, label = label ),size = 4,family="Times New Roman",fontface = "bold.italic")
+# print(p4)
+
+# install.packages("ggalluvial")
+p1 =p1+theme_bw()+
+  scale_y_continuous(expand = c(0,0))+
+  #geom_hline(aes(yintercept=0), colour="black", linetype=2) +
+  #geom_vline(aes(xintercept=0), colour="black", linetype="dashed") +
+  #scale_fill_manual(values = mi, guide = guide_legend(title = NULL))+
+  theme(
+    
+    panel.grid.major=element_blank(),
+    panel.grid.minor=element_blank(),
+    text=element_text(family="Times New Roman",face = "bold"),
+    plot.title = element_text(vjust = -8.5,hjust = 0.1),
+    axis.title.y =element_text(size = 20,face = "bold",colour = "black"),
+    axis.title.x =element_text(size = 24,face = "bold",colour = "black"),
+    axis.text = element_text(size = 20,face = "bold",family = "Times"),
+    axis.text.x = element_text(colour = "black",size = 14,family="Times New Roman"),
+    axis.text.y = element_text(colour = "black",size = 14,family="Times New Roman"),
+    
+    legend.text = element_text(size = 15,face = "bold.italic")
+    #legend.position = "none"#是否删除图例
+    
+  ) 
+p1
+
+FileName1 <- paste(path,"./a2_",j,a,"_bar",".pdf", sep = "")
+
+ggsave(FileName1, p1, width = 12, height =8, device = cairo_pdf, family = "Times New Roman" )
+
+
+##柱状图冲击图
+#stratum定义堆叠柱状图柱子内容，以weight定义柱子长度，alluvium定义连线
+head(Taxonomies_x )
+cs = Taxonomies_x $aa
+# head(cs)
+# as.factor(Taxonomies_x $Genus)
+# cs = as.character(Taxonomies_x $Genus)
+# cs1 = as.factor(cs)
+cs1 = cs
+#提取真正的因子的数量
+lengthfactor = length(levels(cs1))
+#提取每个因子对应的数量
+cs3 = summary (as.factor(cs1))
+cs4 = as.data.frame(cs3)
+cs4$id = row.names(cs4)
+#对因子进行排序
+df_arrange<- arrange(cs4, id)
+#对Taxonomies_x 对应的列进行排序
+Taxonomies_x1<- arrange(Taxonomies_x , aa)
+head(Taxonomies_x1)
+#构建flow的映射列Taxonomies_x 
+Taxonomies_x1$ID = factor(rep(c(1:lengthfactor), cs4$cs3))
+
+#colour = "black",size = 2,,aes(color = "black",size = 0.8)
+
+p2 = ggplot(Taxonomies_x1,
+            aes(x = group, stratum = aa, alluvium = ID,
+                weight = Abundance,
+                fill = aa, label = aa)) +
+  geom_flow(stat = "alluvium", lode.guidance = "rightleft",
+            color = "black",size = 0.2,width = 0.3,alpha = .2) +
+  # geom_bar(width = 0.45)+
+  geom_stratum(width = 0.45,size = 0.2) +
+  #geom_text(stat = "stratum", size = 3,family="Times New Roman",fontface = "bold.italic") +
+  #theme(legend.position = "none") +
+  scale_fill_manual(values = Phylum_colors,guide  = guide_legend(title = NULL))+
+  #ggtitle("fow_plot")+
+  scale_x_discrete(limits = c(axis_order),labels = c("D","H"))+
+  # geom_text(aes(y = label_y, label = label ),size = 4,family="Times New Roman",fontface = "bold.italic")+
+  labs(x="",
+       y="Relative abundancce (%)",
+       title="")
+# p2
+
+p2 =p2+theme_bw()+
+  scale_y_continuous(expand = c(0,0))+
+  #geom_hline(aes(yintercept=0), colour="black", linetype=2) +
+  #geom_vline(aes(xintercept=0), colour="black", linetype="dashed") +
+  #scale_fill_manual(values = mi, guide = guide_legend(title = NULL))+
+  theme(
+    
+    panel.grid.major=element_blank(),
+    panel.grid.minor=element_blank(),
+    text=element_text(family="Times New Roman",face = "bold"),
+    plot.title = element_text(vjust = -8.5,hjust = 0.1),
+    axis.title.y =element_text(size = 20,face = "bold",colour = "black"),
+    axis.title.x =element_text(size = 24,face = "bold",colour = "black"),
+    axis.text = element_text(size = 20,face = "bold",family = "Times"),
+    axis.text.x = element_text(colour = "black",size = 24,family="Times New Roman"),
+    axis.text.y = element_text(colour = "black",size = 20,family="Times New Roman"),
+    
+    legend.text = element_text(size = 15,face = "bold.italic")
+    #legend.position = "none"#是否删除图例
+    
+  ) 
+p2
+
+FileName2 <- paste(path,"./a2_",j,a,"_bar_flow",".pdf", sep = "")
+library("Cairo")
+
+ggsave(FileName2, p2, width = 12, height =6, device = cairo_pdf, family = "Times New Roman" )
+
+
+```
+### alpha 多样性
+
+
+备注：alpha多样性指标分析表明JK1样品很可能出现错误
+
+### 自编函数，用于alpha多样性指标计算和出图
+添加microbiome包中的20多种alpha多样性指标，并且修改误差线，淡然需要载入microbiome
+```{r change alpha plot, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+library("microbiome")
+plot_alpha <- function (physeq, x = "samples", color = NULL, shape = NULL, 
+          title = NULL, scales = "free_y", nrow = 1, shsi = NULL, measures = NULL, index = "all",
+          sortby = NULL) 
+{
+  erDF1 = estimate_richness(physeq, split = TRUE, measures = measures)
+  
+  tab <- microbiome::alpha(physeq, index = index)
+  erDF = cbind(erDF1,tab)
+  measures = colnames(erDF)
+  ses = colnames(erDF)[grep("^se\\.", colnames(erDF))]
+  measures = measures[!measures %in% ses]
+  if (!is.null(sample_data(physeq, errorIfNULL = FALSE))) {
+    DF <- data.frame(erDF, sample_data(physeq))
+  }
+  else {
+    DF <- data.frame(erDF)
+  }
+  if (!"samples" %in% colnames(DF)) {
+    DF$samples <- sample_names(physeq)
+  }
+  if (!is.null(x)) {
+    if (x %in% c("sample", "samples", "sample_names", "sample.names")) {
+      x <- "samples"
+    }
+  }
+  else {
+    x <- "samples"
+  }
+  mdf = reshape2::melt(DF, measure.vars = measures)
+  mdf$se <- NA_integer_
+  if (length(ses) > 0) {
+    selabs = ses
+    names(selabs) <- substr(selabs, 4, 100)
+    substr(names(selabs), 1, 1) <- toupper(substr(names(selabs), 
+                                                  1, 1))
+    mdf$wse <- sapply(as.character(mdf$variable), function(i, 
+                                                           selabs) {
+      selabs[i]
+    }, selabs)
+    for (i in 1:nrow(mdf)) {
+      if (!is.na(mdf[i, "wse"])) {
+        mdf[i, "se"] <- mdf[i, (mdf[i, "wse"])]
+      }
+    }
+    mdf <- mdf[, -which(colnames(mdf) %in% c(selabs, "wse"))]
+  }
+  if (!is.null(measures)) {
+    if (any(measures %in% as.character(mdf$variable))) {
+      mdf <- mdf[as.character(mdf$variable) %in% measures, 
+                 ]
+    }
+    else {
+      warning("Argument to `measures` not supported. All alpha-diversity measures (should be) included in plot.")
+    }
+  }
+  if (!is.null(shsi)) {
+    warning("shsi no longer supported option in plot_richness. Please use `measures` instead")
+  }
+  if (!is.null(sortby)) {
+    if (!all(sortby %in% levels(mdf$variable))) {
+      warning("`sortby` argument not among `measures`. Ignored.")
+    }
+    if (!is.discrete(mdf[, x])) {
+      warning("`sortby` argument provided, but `x` not a discrete variable. `sortby` is ignored.")
+    }
+    if (all(sortby %in% levels(mdf$variable)) & is.discrete(mdf[, 
+                                                                x])) {
+      wh.sortby = which(mdf$variable %in% sortby)
+      mdf[, x] <- factor(mdf[, x], levels = names(sort(tapply(X = mdf[wh.sortby, 
+                                                                      "value"], INDEX = mdf[wh.sortby, x], mean, na.rm = TRUE, 
+                                                              simplify = TRUE))))
+    }
+  }
+  richness_map = aes_string(x = x, y = "value", colour = color, 
+                            shape = shape)
+  p = ggplot(mdf, richness_map) + geom_point(na.rm = TRUE) + 
+    stat_compare_means(comparisons=my_comparisons,label = "p.signif")+
+    stat_compare_means()
+  if (any(!is.na(mdf[, "se"]))) {
+    # p = p + geom_errorbar(aes(ymax = value + se, ymin = value - 
+    #                             se), width = 0.1)
+  }
+  p = p + theme(axis.text.x = element_text(angle = -90, vjust = 0.5, 
+                                           hjust = 0))
+  p = p + ylab("Alpha Diversity Measure")
+  p = p + facet_wrap(~variable, nrow = nrow, scales = scales)
+  if (!is.null(title)) {
+    p <- p + ggtitle(title)
+  }
+  return(p)
+}
+```
+
+### 使用修改函数进行多样性计算和出图
+这里计算microbiome包中全部的alpha多样性指标
+
+```{r final alpha plot, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+my_comparisons <- list(c("D_bulk", "H_bulk"))
+p3 = plot_alpha(ps11, x="SampleType",color="SampleType", measures=c( "Chao1","Simpson"),index = c("observed"))+
+  geom_boxplot(alpha=1, outlier.size=2, size=1, width=0.5,notchwidth=1) +  
+  geom_jitter( position=position_jitter(0.17), size=2, alpha=0.7)+
+  labs(x="", y=paste("", sep = " "))
+p3 = p3+mythemealpha+
+  scale_x_discrete(limits = c(axis_order),labels = c("D","H"))+
+  scale_color_manual(values = mi, guide = guide_legend(title = NULL),labels = c("D","H"))+
+  scale_fill_manual(values = mi, guide = guide_legend(title = NULL),labels = c("D","H"))
+p3   
+library("Cairo")
+
+plotname = paste(path,"/a1_alpha_final3000.pdf",sep = "")
+ggsave(plotname , p3, width = 8, height = 6,limitsize = FALSE,device = cairo_pdf,family = "Times New Roman")
+
+```
+
+
+### beta多样性分析
+一般我做三个，bary 两个unifrac
+这里我使用的phyloseq包做beta多样性分析，但是由于出图实在是不好看，可修改的部分过少，所以我带着phyloseq的套子，使用原来代码出图
+
+```{r for phyloseq to beta, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+library("microbiomeSeq")
+# ?ordinate
+ps1_rela  = transform_sample_counts(ps, function(x) x / sum(x) );
+ps1_rela 
+ordu = ordinate(ps1_rela, "PCoA", "bray", weighted=F)
+eig = ordu[["values"]]$Eigenvalues
+
+points = as.data.frame(ordu[["vectors"]][,1:2]) # 获得坐标点get coordinate string, format to dataframme
+colnames(points) = c("x", "y") #命名行名
+
+sub_design = as.data.frame(sample_data(ps1_rela))
+
+vegan_otu <-  function(physeq){
+  OTU <-  otu_table(physeq)
+  if(taxa_are_rows(OTU)){
+    OTU <-  t(OTU)
+  }
+  return(as(OTU,"matrix"))
+}
+otu_table = as.data.frame((vegan_otu(ps1_rela)))
+points = cbind(points, sub_design[match(rownames(points), rownames(sub_design)), ])
+#write.table(points,"pcoa_bray_curtis.txt",quote = FALSE,row.names = F,
+#           col.names = T,sep = "\t")
+dim(points)
+library(vegan)
+ado = adonis(unif~ sub_design$SampleType,permutations = 999,method="bray")
+a = round(as.data.frame(ado$aov.tab[5])[1,1],3)
+R2 <- paste("adonis:R ",a, sep = "")
+b = as.data.frame(ado$aov.tab[6])[1,1]
+p_v = paste("p: ",b, sep = "")
+title = paste(R2," ",p_v, sep = "")
+title
+
+# mi=c("#1B9E77" ,"#D95F02", "#7570B3","#E7298A","#E6AB02", "#B3DE69")
+p4 <-ggplot(points, aes(x=x, y=y, fill = SampleType)) +
+  geom_point(alpha=.7, size=5, pch = 21) +
+  labs(x=paste("PCoA 1 (", format(100 * eig[1] / sum(eig), digits=4), "%)", sep=""),
+       y=paste("PCoA 2 (", format(100 * eig[2] / sum(eig), digits=4), "%)", sep=""),
+       title=title)+
+  stat_ellipse( linetype = 2,level = 0.65,aes(group  =SampleType, colour =  SampleType))+
+  #stat_ellipse( linetype = 1,level = 0.8)+
+  #geom_text_repel(aes(label=points$id),size=4)+
+  scale_colour_manual(values = mi,guide = guide_legend(title = NULL),labels = c("D","H"))+
+  scale_fill_manual(values = mi,guide = guide_legend(title = NULL),labels = c("D","H"))+
+  #labs(title = "toamto hea and dis")+
+  guides(color=guide_legend(title = NULL),shape=guide_legend(title = NULL)) 
+p4
+# points$id=row.names(points)
+# p+geom_text(aes(label=points$id),size=4)#?stat_ellipse
+p4 = p4+theme_bw()+
+  
+  #scale_y_continuous(expand = c(0,0))+
+  geom_hline(aes(yintercept=0), colour="black", linetype=2) +
+  geom_vline(aes(xintercept=0), colour="black", linetype="dashed") +
+  # scale_fill_manual(values = mi, guide = guide_legend(title = NULL))+
+  theme(
+    
+    panel.grid.major=element_blank(),
+    panel.grid.minor=element_blank(),
+    
+    plot.title = element_text(vjust = -8.5,hjust = 8.5,size = 24),
+    axis.title.y =element_text(size = 24,face = "bold",colour = "black"),
+    axis.title.x =element_text(size = 24,face = "bold",colour = "black"),
+    axis.text = element_text(size = 20,face = "bold"),
+    axis.text.x = element_text(colour = "black",size = 24),
+    axis.text.y = element_text(colour = "black",size = 24),
+    legend.text = element_text(size = 20,face = "bold")
+    #legend.position = "none"#是否删除图例
+    
+  ) 
+p4
+# path = "./"
+# head(points)
+# points$id=row.names(points)
+# p2+geom_text(aes(label=points$id),size=4)
+plotname = paste(path,"/a2_bray_PCOA.pdf",sep = "")
+library("Cairo")
+ggsave(plotname, p4, width = 8, height = 6,device = cairo_pdf,family = "Times New Roman")
+
+path
+```
+
+## 下面通过韦恩图将OTU信息做一个展示
+
+
+```{r ven, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+# rm(list=ls())
+library(tidyverse)
+
+#otu_table = as.data.frame(otu_table(ps))
+
+vegan_otu <-  function(physeq){
+  OTU <-  otu_table(physeq)
+  if(taxa_are_rows(OTU)){
+    OTU <-  t(OTU)
+  }
+  return(as(OTU,"matrix"))
+}
+
+aa = vegan_otu(ps)
+otu_table = as.data.frame(t(aa))
+str(aa)
+
+count = aa
+countA = count
+dim(count)
+
+sub_design <- as.data.frame(sample_data(ps))
+##########就根际样品做OTU之间的交集及其并集等操作
+# D_rhi = filter(sub_design, SampleType == "D_rhi")
+# numD = nrow(D_rhi);numD
+# H_rhi = filter(sub_design, SampleType == "H_rhi")
+# dim(H_rhi)
+# numH = nrow(H_rhi);numH
+# 
+# ##设置阈值
+# pick_val_numH <- numH/2
+# pick_val_numD <- numD/2
+
+# pick_val_numH <- numH*2/3
+# pick_val_numD <- numD*2/3
+
+
+###############
+D_bulk = filter(sub_design, SampleType == "D_bulk")
+
+numD_bulk = nrow(D_bulk);numD_bulk
+H_bulk = filter(sub_design, SampleType == "H_bulk")
+numH_bulk= nrow(H_bulk);numH_bulk
+
+pick_val_numH_bulk <- numH_bulk/3
+pick_val_numD_bulk <- numD_bulk/3
+
+# pick_val_numH_bulk <- numH_bulk*2/3
+# pick_val_numD_bulk <- numD_bulk*2/3
+
+
+count[count > 0] <- 1###这个函数只能用于0,1 的数据，所以我这么转换
+
+count2 = as.data.frame(count)
+
+library("tibble")
+#数据分组
+dim(count2)
+count2$ID <- sub_design$SampleType
+iris.split <- split(count2,as.factor(count2$ID))
+#数据分组计算平均值
+# iris.apply <- lapply(iris.split,function(x)colSums(x[-1340]))
+iris.apply <- lapply(iris.split,function(x)colSums(x[-36189]))
+# 组合结果
+iris.combine <- do.call(rbind,iris.apply)
+
+
+####健康根际中超过半数样品存在的OTU挑选出来
+ven2 = t(iris.combine)
+head(ven2)
+# for (i in 1:nrow(ven2)) {
+#   if (ven2[i,4] < pick_val_numH) {
+#     ven2[i,4] = 0
+#   }else if (ven2[i,4] >= pick_val_numH) {
+#     ven2[i,4] = 1
+#   }
+#   
+# }
+# ###发病根际中超过半数样品存在的OTU挑选出来
+# for (i in 1:nrow(ven2)) {
+#   if (ven2[i,2] < pick_val_numD) {
+#     ven2[i,2] = 0
+#   }else if (ven2[i,2] >= pick_val_numD) {
+#     ven2[i,2] = 1
+#   }
+#   
+# }
+
+####健康根际中超过半数样品存在的OTU挑选出来#########
+
+for (i in 1:nrow(ven2)) {
+  if (ven2[i,2] < pick_val_numH_bulk) {
+    ven2[i,2] = 0
+  }else if (ven2[i,2] >= pick_val_numH_bulk) {
+    ven2[i,2] = 1
+  }
+  
+}
+###发病根际中超过半数样品存在的OTU挑选出来
+for (i in 1:nrow(ven2)) {
+  if (ven2[i,1] < pick_val_numD_bulk) {
+    ven2[i,1] = 0
+  }else if (ven2[i,1] >= pick_val_numD_bulk) {
+    ven2[i,1] = 1
+  }
+  
+}
+####健康根际中超过半数样品存在的OTU挑选出来#########
+
+
+ven2 = as.data.frame(ven2)
+head(ven2)
+
+
+#########更加高级的设置在这里可以查看#https://mp.weixin.qq.com/s/6l7gftKQfiyxNH66i19YtA
+
+
+#########更加高级的设置在这里可以查看#https://mp.weixin.qq.com/s/6l7gftKQfiyxNH66i19YtA
+ven3 = as.list(ven2)
+for (i in 1:ncol(ven2)) {
+  
+  
+  ven3[[i]] <-  row.names(ven2[ven2[i] == 1,])
+  
+}
+
+mi = c("#E41A1C","#377EB8" )
+
+library (VennDiagram) 
+if (length(names(ven3)) == 2) {
+  filename3 = paste(path,"ven_",paste(names(ven3),sep = "",collapse="-"),".pdf",sep = "",collapse="_")
+  pdf(file=filename3,width = 8, height = 6)
+  T<-venn.diagram(ven3,
+                  filename=NULL,
+                  lwd=2,#圈线粗度
+                  lty=1, #圈线类型
+                  fill=mi, #填充颜色
+                  col=mi, #圈线颜色
+                  cat.col=mi,#A和B的颜色
+                  cat.cex = 4,# A和B的大小
+                  rotation.degree = 0,#旋转角度
+                  main = "",#主标题内容
+                  main.cex = 2,#主标题大小
+                  sub = "",#亚标题内容
+                  sub.cex = 1,#亚标题字大小
+                  cex=3,#里面交集字的大小
+                  alpha = 0.5,#透明度
+                  reverse=TRUE,
+                  scaled     = FALSE)
+  grid.draw(T)
+  T<-venn.diagram(ven3,
+                  filename=NULL,
+                  lwd=2,#圈线粗度
+                  lty=1, #圈线类型
+                  fill=mi, #填充颜色
+                  col=mi, #圈线颜色
+                  cat.col=mi,#A和B的颜色
+                  cat.cex = 4,# A和B的大小
+                  rotation.degree = 0,#旋转角度
+                  main = "",#主标题内容
+                  main.cex = 2,#主标题大小
+                  sub = "",#亚标题内容
+                  sub.cex = 1,#亚标题字大小
+                  cex=3,#里面交集字的大小
+                  alpha = 0.5,#透明度
+                  reverse=TRUE,
+                  scaled     = FALSE)
+  grid.draw(T)
+  T<-venn.diagram(ven3,
+                  filename=NULL,
+                  lwd=2,#圈线粗度
+                  lty=1, #圈线类型
+                  fill=mi, #填充颜色
+                  col=mi, #圈线颜色
+                  cat.col=mi,#A和B的颜色
+                  cat.cex = 4,# A和B的大小
+                  rotation.degree = 0,#旋转角度
+                  main = "",#主标题内容
+                  main.cex = 2,#主标题大小
+                  sub = "",#亚标题内容
+                  sub.cex = 1,#亚标题字大小
+                  cex=3,#里面交集字的大小
+                  alpha = 0.5,#透明度
+                  reverse=TRUE,
+                  scaled     = FALSE)
+  grid.draw(T)
+  dev.off()
+  grid.draw(T)
+} else if (length(names(ven3)) == 3) {
+  filename3 = paste(path,"ven_",paste(names(ven3),sep = "",collapse="-"),".pdf",sep = "",collapse="_")
+  pdf(file=filename3,width = 12, height = 12)
+  T<-venn.diagram(ven3,
+                  filename=NULL,
+                  lwd=2,#圈线粗度
+                  lty=1, #圈线类型
+                  fill=c(mi,"yellow"), #填充颜色
+                  col=c(mi,"yellow"), #圈线颜色
+                  cat.col=c('red',"blue","yellow"),#A和B的颜色
+                  cat.cex = 4,# A和B的大小
+                  rotation.degree = 0,#旋转角度
+                  main = "",#主标题内容
+                  main.cex = 2,#主标题大小
+                  sub = "",#亚标题内容
+                  sub.cex = 1,#亚标题字大小
+                  cex=3,#里面交集字的大小
+                  alpha = 0.5,#透明度
+                  reverse=TRUE,
+                  scaled     = FALSE)
+  grid.draw(T)
+  dev.off()
+  grid.draw(T)
+} else if (length(names(ven3)) == 4) {
+  filename3 = paste(path,"ven_",paste(names(ven3),sep = "",collapse="-"),".pdf",sep = "",collapse="_")
+  pdf(file=filename3,width = 12, height = 12)
+  T<-venn.diagram(ven3,
+                  filename=NULL,
+                  lwd=2,#圈线粗度
+                  lty=1, #圈线类型
+                  fill=c('red',"blue","yellow","#7ad2f6"), #填充颜色
+                  col=c('red',"blue","yellow","#7ad2f6"), #圈线颜色
+                  cat.col=c('red',"blue","yellow","#7ad2f6"),#A和B的颜色
+                  cat.cex = 4,# A和B的大小
+                  rotation.degree = 0,#旋转角度
+                  main = "",#主标题内容
+                  main.cex = 2,#主标题大小
+                  sub = "",#亚标题内容
+                  sub.cex = 1,#亚标题字大小
+                  cex=3,#里面交集字的大小
+                  alpha = 0.5,#透明度
+                  reverse=TRUE,
+                  scaled     = FALSE)
+  grid.draw(T)
+  dev.off()
+  grid.draw(T)
+}else if (length(names(ven3)) == 5) {
+  filename3 = paste(path,"ven_",paste(names(ven3),sep = "",collapse="-"),".pdf",sep = "",collapse="_")
+  pdf(file=filename3,width = 12, height = 12)
+  T<-venn.diagram(ven3,
+                  filename=NULL,
+                  lwd=2,#圈线粗度
+                  lty=1, #圈线类型
+                  fill=c('red',"blue","yellow","#7ad2f6","green"), #填充颜色
+                  col=c('red',"blue","yellow","#7ad2f6","green"), #圈线颜色
+                  cat.col=c('red',"blue","yellow","#7ad2f6","green"),#A和B的颜色
+                  cat.cex = 4,# A和B的大小
+                  rotation.degree = 0,#旋转角度
+                  main = "",#主标题内容
+                  main.cex = 2,#主标题大小
+                  sub = "",#亚标题内容
+                  sub.cex = 1,#亚标题字大小
+                  cex=3,#里面交集字的大小
+                  alpha = 0.5,#透明度
+                  reverse=TRUE,
+                  scaled     = FALSE)
+  grid.draw(T)
+  dev.off()
+  grid.draw(T)
+}else if (length(names(ven3)) == 6) {
+  
+  print("ven not use for more than 6")
+}
+
+
+
+
+library(UpSetR)
+#install.packages("UpSetR")
+filename4 = paste(path,"UpSet_",paste(names(ven3),sep = "",collapse="-"),".pdf",sep = "",collapse="_")
+pdf(file=filename4,width = 12, height = 8)
+p5 = upset(ven2, sets = colnames(ven2),
+      number.angles = 30, point.size = 2, line.size = 1,
+      mainbar.y.label = "OTU", sets.x.label = "OTU Per Treatment",
+      text.scale = c(2, 2, 2,2, 2, 2),mb.ratio = c(0.7, 0.3),order.by = "freq",keep.order = TRUE,
+      queries = list(list(query = intersects, params = 
+                            list(colnames(ven2)), color = "red", active = T),
+                     list(query = intersects, params = 
+                            list(colnames(ven2)), color = "red", active = T),
+                     list(query = intersects, params = 
+                            list(colnames(ven2)), color = "red", active = T)))
+dev.off()
+
+p5
+
+
+```
+
+
+```{R}
+save.image(file='./bac_base_diversity.RData')
+
+
+
+```
+
